@@ -1,16 +1,14 @@
 from typing import Callable, Tuple, Union
 import math
+import serial
+import serial.tools.list_ports
 from . import util
 
-# TODO:
-# minimize feedrate output
-# draw absolute
-# travel func
-# catch more invalid inputs
 class Gcode:
     def __init__(
         self,
-        filename: str,
+        port: str,
+        baudrate: int = 9600,
         layer_height: float = 0.2,
         line_width: float = 0.4,
         filament_width: float = 1.75,
@@ -19,8 +17,12 @@ class Gcode:
             [float, float, float, float], float
         ] = util.calculate_extrusion_length,
     ) -> None:
-        self.filename = filename
-        self.file = open(filename, "w")
+        self.port = port
+        self.baudrate = baudrate
+        if port == '':
+            self.serial_port = None
+        else:
+            self.serial_port = serial.Serial(port, baudrate)
         self.layer_height = layer_height
         self.line_width = line_width
         self.filament_width = filament_width
@@ -30,10 +32,11 @@ class Gcode:
         self.e = None
 
     def close(self):
-        self.file.close()
+        if self.serial_port is not None:
+            self.serial_port.close()
 
     def home(self):
-        self.file.write("G28\n")
+        self.writeln("G28\n")
         self.pos = list(self.home_pos)
 
     def get_x(self) -> float:
@@ -47,6 +50,12 @@ class Gcode:
 
     def get_e(self) -> float:
         return self.e
+    
+    def writeln(self, line: str):
+        if self.serial_port is not None:
+            self.serial_port.write(line + "\n")
+        else:
+            print(line)
 
     def set_layer_height(self, layer_height: float):
         self.layer_height = layer_height
@@ -58,14 +67,14 @@ class Gcode:
         self.filament_width = filament_width
 
     def zero_extruder(self):
-        self.file.write("G92 E0\n")
+        self.writeln("G92 E0\n")
         self.e = 0
 
     def set_tool_temp(self, temperature: int, tool_index: int = 0):
         out = f"M104 S{temperature}"
         if tool_index != 0:
             out += f" T{tool_index}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def wait_tool_temp(
         self, temperature: int, tool_index: int = 0, on_cool: bool = False
@@ -77,11 +86,11 @@ class Gcode:
             out += f" S{temperature}"
         if tool_index != 0:
             out += f" T{tool_index}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def set_bed_temp(self, temperature: int):
         out = f"M140 S{temperature}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def wait_bed_temp(self, temperature: int, on_cool: bool = False):
         out = "M190"
@@ -89,7 +98,7 @@ class Gcode:
             out += f" R{temperature}"
         else:
             out += f" S{temperature}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def travel(self, delta: Tuple[float, float, float], feedrate: int = 2400):
         self.pos[0] += delta[0]
@@ -102,7 +111,7 @@ class Gcode:
             out += f" Y{self.pos[1]}"
         if delta[2] != 0.0:
             out += f" Z{self.pos[2]}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def travel_arc(
         self,
@@ -129,7 +138,7 @@ class Gcode:
         self.pos[0] = location[0]
         self.pos[1] = location[1]
         self.pos[2] = location[2]
-        self.file.write(
+        self.writeln(
             f"G0 F{feedrate} X{self.pos[0]} Y{self.pos[1]} Z{self.pos[2]}\n"
         )
 
@@ -155,7 +164,7 @@ class Gcode:
         if delta[2] != 0.0:
             out += f" Z{self.pos[2]}"
         out += f" E{e}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def draw_arc(
         self,
@@ -186,7 +195,7 @@ class Gcode:
             out += f" Y{self.pos[1]}"
         if delta[2] != 0.0:
             out += f" Z{self.pos[2]}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def draw_arc_r(
         self,
@@ -228,7 +237,7 @@ class Gcode:
             out += f" Y{self.pos[1]}"
         if delta[2] != 0.0:
             out += f" Z{self.pos[2]}"
-        self.file.write(out + "\n")
+        self.writeln(out + "\n")
 
     def draw_func(
         self,
